@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Project data (raw filings cache, SQLite DB, LLM response cache)
+data/
+
+# ML model caches
+.cache/
+*.safetensors
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

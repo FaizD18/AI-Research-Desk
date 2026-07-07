@@ -1,0 +1,43 @@
+[project]
+name = "research-desk"
+version = "0.1.0"
+description = "AI Research Desk — SEC 10-K risk intelligence, thesis generation, agent debate, and backtesting"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.116,<1",
+    "lxml>=5.0",
+    "requests>=2.32",
+    "pydantic>=2.7",
+    "numpy>=2.4",
+    "sentence-transformers>=5.6",
+    "vectorbt>=1.1",
+    "streamlit>=1.59",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "research_desk"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: downloads models or hits the network; excluded by default (make test-all)",
+]
+addopts = "-m 'not slow'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

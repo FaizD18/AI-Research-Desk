@@ -26,8 +26,8 @@
 - [x] extract.py — Item 1A parser (ToC-anchor + heading-scan + LLM fallback)
 - [x] extract.py tests passing against 3+ real filings (AAPL, NVDA, JPM)
 - [x] llm.py — shared disk-cached Anthropic client (used by extract + score)
-- [ ] diff.py — paragraph embedding + YoY matching + classification
-- [ ] diff.py tests passing
+- [x] diff.py — paragraph embedding + YoY matching + classification
+- [x] diff.py tests passing (7 tests; real run: 430 NEW/ESCALATED changes)
 - [ ] score.py — LLM categorization + severity, batched + cached
 - [ ] score.py tests passing
 - [ ] Phase 1 end-to-end run on all 3 tickers, committed, user reviewed

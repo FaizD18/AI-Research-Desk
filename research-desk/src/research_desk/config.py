@@ -17,6 +17,7 @@ DATA_DIR = Path(os.environ.get("RESEARCH_DESK_DATA_DIR", PROJECT_ROOT / "data"))
 RAW_DIR = DATA_DIR / "raw"  # data/raw/<ticker>/<accession>.html
 EXTRACTED_DIR = DATA_DIR / "extracted"  # plain-text Item 1A sections
 LLM_CACHE_DIR = DATA_DIR / "cache" / "llm"  # disk cache for every LLM call
+EMBED_CACHE_DIR = DATA_DIR / "cache" / "embeddings"  # cached paragraph vectors
 DEBATES_DIR = DATA_DIR / "debates"  # full debate transcripts (Phase 3)
 DB_PATH = DATA_DIR / "research_desk.db"
 

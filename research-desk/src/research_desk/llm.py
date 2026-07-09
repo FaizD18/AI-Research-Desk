@@ -19,9 +19,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from functools import lru_cache
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -103,6 +104,150 @@ def cached_call(
         log.warning("LLM returned no parseable output (attempt %d/2)", attempt + 1)
 
     raise LLMError(f"no valid {response_model.__name__} after retry: {last_err}")
+
+
+# --- Batched structured calls -------------------------------------------
+
+# JSON-schema keywords the structured-output API does not accept; we strip
+# them from the wire schema and rely on Pydantic to enforce them on parse.
+_UNSUPPORTED_SCHEMA_KEYS = frozenset(
+    {
+        "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+        "minLength", "maxLength", "pattern", "multipleOf",
+        "minItems", "maxItems", "title", "default",
+    }
+)
+
+
+def _strict_schema(model: type[BaseModel]) -> dict[str, Any]:
+    """Build an API-acceptable JSON schema: additionalProperties false, all
+    keys required, unsupported numeric/string constraints stripped."""
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key in _UNSUPPORTED_SCHEMA_KEYS:
+                node.pop(key, None)
+            if node.get("type") == "object" and "properties" in node:
+                node["additionalProperties"] = False
+                node["required"] = list(node["properties"].keys())
+            for value in node.values():
+                _walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                _walk(value)
+
+    schema = model.model_json_schema()
+    _walk(schema)
+    return schema
+
+
+def cached_batch(
+    system: str,
+    users: list[str],
+    response_model: type[M],
+    *,
+    model: str = config.LLM_MODEL,
+    max_tokens: int = config.LLM_MAX_TOKENS,
+    batch_threshold: int = config.LLM_BATCH_THRESHOLD,
+) -> list[M | None]:
+    """Score many prompts, aligned with ``users``; ``None`` where a call failed.
+
+    Cache hits are served from disk with no API call. Remaining misses go
+    through the Message Batches API (50% cheaper) when there are at least
+    ``batch_threshold`` of them, else individual calls. Batch results are
+    written to the *same* per-item cache keys as :func:`cached_call`, so a
+    later single or batch call for the same prompt is free.
+    """
+    results: list[M | None] = [None] * len(users)
+    misses: list[tuple[int, str, str]] = []  # (index, user, cache_path_key)
+    for idx, user in enumerate(users):
+        key = _cache_key(model, system, user, response_model.__name__, max_tokens)
+        path = _cache_path(key)
+        if path.exists():
+            results[idx] = response_model.model_validate_json(path.read_text())
+        else:
+            misses.append((idx, user, key))
+
+    if not misses:
+        return results
+
+    try:
+        if len(misses) < batch_threshold:
+            for idx, user, _ in misses:
+                try:
+                    results[idx] = cached_call(
+                        system, user, response_model, model=model, max_tokens=max_tokens
+                    )
+                except LLMError:
+                    log.exception("scoring failed for item %d", idx)
+        else:
+            log.info("submitting %d prompts to the Message Batches API", len(misses))
+            _run_batch(system, misses, results, response_model, model, max_tokens)
+    except Exception as exc:
+        # A missing ANTHROPIC_API_KEY or a batch API failure must not discard
+        # the cache hits already collected; leave unresolved items as None.
+        unresolved = sum(r is None for r in results)
+        log.warning(
+            "LLM scoring unavailable (%s); %d items left unscored. "
+            "Set ANTHROPIC_API_KEY and rerun to score them.",
+            exc.__class__.__name__, unresolved,
+        )
+    return results
+
+
+def _run_batch(
+    system: str,
+    misses: list[tuple[int, str, str]],
+    results: list[M | None],
+    response_model: type[M],
+    model: str,
+    max_tokens: int,
+) -> None:
+    """Submit misses as one batch, poll to completion, cache + fill results."""
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
+
+    client = _client()
+    schema = _strict_schema(response_model)
+    by_custom_id = {f"i{idx}": (idx, key) for idx, _, key in misses}
+    requests = [
+        Request(
+            custom_id=f"i{idx}",
+            params=MessageCreateParamsNonStreaming(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                thinking={"type": "disabled"},
+                messages=[{"role": "user", "content": user}],
+                output_config={"format": {"type": "json_schema", "schema": schema}},
+            ),
+        )
+        for idx, user, key in misses
+    ]
+    batch = client.messages.batches.create(requests=requests)
+    while True:
+        status = client.messages.batches.retrieve(batch.id)
+        if status.processing_status == "ended":
+            break
+        time.sleep(config.LLM_BATCH_POLL_SECONDS)
+
+    for result in client.messages.batches.results(batch.id):
+        idx, key = by_custom_id[result.custom_id]
+        if result.result.type != "succeeded":
+            log.warning("batch item %s: %s", result.custom_id, result.result.type)
+            continue
+        message = result.result.message
+        text = next((b.text for b in message.content if b.type == "text"), None)
+        if text is None:
+            continue
+        try:
+            validated = response_model.model_validate_json(text)
+        except ValidationError:
+            log.exception("batch item %s failed schema validation", result.custom_id)
+            continue
+        _cache_path(key).parent.mkdir(parents=True, exist_ok=True)
+        _cache_path(key).write_text(validated.model_dump_json())
+        results[idx] = validated
 
 
 # --- Extraction fallback -------------------------------------------------

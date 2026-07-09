@@ -28,9 +28,11 @@
 - [x] llm.py — shared disk-cached Anthropic client (used by extract + score)
 - [x] diff.py — paragraph embedding + YoY matching + classification
 - [x] diff.py tests passing (7 tests; real run: 430 NEW/ESCALATED changes)
-- [ ] score.py — LLM categorization + severity, batched + cached
-- [ ] score.py tests passing
-- [ ] Phase 1 end-to-end run on all 3 tickers, committed, user reviewed
+- [x] score.py — LLM categorization + severity, batched (50% via Batches API)
+      + disk-cached; degrades gracefully without a key
+- [x] score.py tests passing (10 tests, client faked — no key/network)
+- [~] Phase 1 end-to-end run on all 3 tickers, committed, user reviewed
+      (ingest/extract/diff run on real data; scoring gated on ANTHROPIC_API_KEY)
 
 ## Phase 2 — Sentiment + thesis
 

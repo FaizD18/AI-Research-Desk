@@ -99,6 +99,18 @@ THESIS_MAX_TOKENS = 1_500  # thesis objects are longer than single risk scores
 
 DEBATE_MAX_TOKENS = 1_200  # per Bull/Bear argument and per Judge verdict
 
+# --- Backtest (Phase 3) --------------------------------------------------
+
+PRICES_CACHE_DIR = DATA_DIR / "cache" / "prices"  # one CSV of adjusted closes per symbol
+BENCHMARK = "SPY"
+# A thesis trades only when the Judge found it convincing; below the bar -> flat.
+# Deliberate defaults, not fitted to data (see README limitations).
+CONVICTION_LONG = 60  # long-thesis conviction >= this -> long position
+CONVICTION_SHORT = 60  # short-thesis conviction >= this -> short position
+REBALANCE_FREQ = "MS"  # rebalance on the first trading day of each month
+BACKTEST_FEES = 0.0005  # 5 bps per side: approximate all-in trading cost
+BACKTEST_REPORT_PATH = DATA_DIR / "backtest_report.md"
+
 RISK_CATEGORIES: list[str] = [
     "regulatory",
     "competitive",

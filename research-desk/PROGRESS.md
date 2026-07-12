@@ -6,16 +6,17 @@
 
 ## Current state
 
-- **In progress:** extract.py + llm.py complete and committed. Next module is
-  diff.py.
-- **Next step:** diff.py — split each Item 1A into risk paragraphs, embed with
-  BAAI/bge-small-en-v1.5, match paragraphs across consecutive years by cosine
-  similarity, classify NEW/REMOVED/ESCALATED/UNCHANGED into risk_changes.
-- **Blockers / open questions:** none. All 15 filings (AAPL/NVDA/JPM × 5y)
-  extract via the ToC-anchor heuristic (0 LLM fallbacks); word counts 9.5k–19k
-  match the research. data/ is gitignored, so real-filing tests are marked
-  `slow` and need `make ingest` first; fast tests use committed synthetic
-  fixtures reproducing each filer's real HTML structure.
+- **In progress:** Phase 1 wrap-up. All five modules committed and green
+  (47 fast tests, lint clean). Real-data run done for ingest → extract → diff:
+  15 filings, 1,767 risk changes (440 NEW/ESCALATED). Full README written and
+  fact-checked against code and DB by a 7-agent verification pass (53 claims;
+  3 corrected: JPM example was FY2023 not FY2025, "zero network calls" holds
+  only for `make analyze`, config-centralization overclaim softened).
+- **Next step:** set ANTHROPIC_API_KEY and run `make score` to finish the
+  end-to-end run (440 paragraphs, batched + disk-cached), then user review of
+  Phase 1 before Phase 2 (transcript source also needs user approval).
+- **Blockers / open questions:** ANTHROPIC_API_KEY not set in this
+  environment — scoring stage unrun, risk_scores table empty.
 
 ## Phase 1 — RiskDelta pipeline
 
@@ -27,7 +28,7 @@
 - [x] extract.py tests passing against 3+ real filings (AAPL, NVDA, JPM)
 - [x] llm.py — shared disk-cached Anthropic client (used by extract + score)
 - [x] diff.py — paragraph embedding + YoY matching + classification
-- [x] diff.py tests passing (7 tests; real run: 430 NEW/ESCALATED changes)
+- [x] diff.py tests passing (7 tests; real run: 440 NEW/ESCALATED changes)
 - [x] score.py — LLM categorization + severity, batched (50% via Batches API)
       + disk-cached; degrades gracefully without a key
 - [x] score.py tests passing (10 tests, client faked — no key/network)
@@ -52,3 +53,4 @@
 ## Session log
 
 <!-- One line per session: date — what was done — where it stopped -->
+2026-07-12 — README fact-checked (53 claims, 3 fixed) + PROGRESS refreshed, wrap-up committed & pushed — Phase 1 blocked only on ANTHROPIC_API_KEY scoring run + user review

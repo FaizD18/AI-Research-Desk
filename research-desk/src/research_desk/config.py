@@ -95,6 +95,10 @@ THESIS_TOP_RISKS = 5  # most-severe NEW/ESCALATED paragraphs quoted in the promp
 THESIS_EXCERPT_CHARS = 300  # per-paragraph excerpt length in the prompt
 THESIS_MAX_TOKENS = 1_500  # thesis objects are longer than single risk scores
 
+# --- Debate (Phase 3) ----------------------------------------------------
+
+DEBATE_MAX_TOKENS = 1_200  # per Bull/Bear argument and per Judge verdict
+
 RISK_CATEGORIES: list[str] = [
     "regulatory",
     "competitive",

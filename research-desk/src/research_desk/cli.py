@@ -27,7 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
         "command",
-        choices=["ingest", "extract", "diff", "score"],
+        choices=["ingest", "extract", "diff", "score", "transcripts", "thesis", "debate",
+                 "backtest"],
         help="pipeline stage to run",
     )
     args = parser.parse_args(argv)
@@ -55,6 +56,22 @@ def main(argv: list[str] | None = None) -> int:
         from research_desk.score import run_score
 
         run_score(tickers)
+    elif args.command == "transcripts":
+        from research_desk.transcripts import run_transcripts
+
+        run_transcripts(tickers)
+    elif args.command == "thesis":
+        from research_desk.thesis import run_thesis
+
+        run_thesis(tickers)
+    elif args.command == "debate":
+        from research_desk.debate import run_debate
+
+        run_debate(tickers)
+    elif args.command == "backtest":
+        from research_desk.backtest import run_backtest
+
+        run_backtest(tickers)
     return 0
 
 

@@ -57,6 +57,30 @@ MATCH_THRESHOLD = 0.70  # below this: no match -> NEW (current yr) / REMOVED (pr
 UNCHANGED_THRESHOLD = 0.95  # at/above this: same risk, same language -> UNCHANGED
 MIN_PARAGRAPH_WORDS = 25  # ignore headings/fragments when splitting paragraphs
 
+# --- Earnings-call transcripts (Phase 2) --------------------------------
+
+TRANSCRIPTS_DIR = DATA_DIR / "transcripts"  # data/transcripts/<ticker>/fy<year>q<q>.json
+TRANSCRIPT_SOURCE = "defeatbeta"  # open HuggingFace dataset via defeatbeta-api; no key
+TRANSCRIPT_MIN_WORDS = 500  # below this a "transcript" is a stub; skip it
+
+# Deterministic tone word-lists, inspired by the Loughran-McDonald financial
+# sentiment dictionaries (weak-modal / uncertainty categories). Counted as
+# whole words or phrases, case-insensitive, per 1,000 words of call text.
+HEDGING_TERMS: list[str] = [
+    "may", "might", "could", "possibly", "perhaps", "appears", "appeared",
+    "seems", "somewhat", "roughly", "approximately", "we believe", "we think",
+    "sort of", "kind of",
+]
+UNCERTAINTY_TERMS: list[str] = [
+    "uncertain", "uncertainty", "uncertainties", "risk", "risks", "risky",
+    "volatile", "volatility", "unpredictable", "unclear", "unknown",
+    "fluctuate", "fluctuation", "fluctuations", "headwind", "headwinds",
+]
+GUIDANCE_TERMS: list[str] = [
+    "guidance", "outlook", "forecast", "expect", "expects", "expected",
+    "expectations", "projection", "projections", "target", "targets",
+]
+
 # --- LLM scoring -------------------------------------------------------
 
 LLM_MODEL = "claude-sonnet-5"

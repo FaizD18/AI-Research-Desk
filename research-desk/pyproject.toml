@@ -13,6 +13,8 @@ dependencies = [
     "sentence-transformers>=5.6",
     "vectorbt>=1.1",
     "streamlit>=1.59",
+    "defeatbeta-api>=0.0.60",
+    "yfinance>=1.5.1",
 ]
 
 [dependency-groups]

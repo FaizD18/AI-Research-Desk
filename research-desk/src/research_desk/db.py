@@ -61,6 +61,45 @@ CREATE TABLE IF NOT EXISTS risk_scores (
     model     TEXT NOT NULL,
     scored_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS transcripts (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker             TEXT NOT NULL,
+    fiscal_year        INTEGER NOT NULL,
+    fiscal_quarter     INTEGER NOT NULL,
+    call_date          TEXT NOT NULL,  -- date the call became public (signal date)
+    word_count         INTEGER NOT NULL,
+    hedging_per_1k     REAL NOT NULL,
+    uncertainty_per_1k REAL NOT NULL,
+    guidance_per_1k    REAL NOT NULL,
+    text_path          TEXT NOT NULL,  -- cached raw transcript JSON on disk
+    source             TEXT NOT NULL,
+    ingested_at        TEXT NOT NULL,
+    UNIQUE (ticker, fiscal_year, fiscal_quarter)
+);
+
+CREATE TABLE IF NOT EXISTS theses (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker        TEXT NOT NULL,
+    transcript_id INTEGER NOT NULL REFERENCES transcripts(id),
+    as_of         TEXT NOT NULL,   -- call date; the thesis is usable only after this
+    direction     TEXT NOT NULL CHECK (direction IN ('long', 'short', 'neutral')),
+    confidence    REAL NOT NULL CHECK (confidence BETWEEN 0.0 AND 1.0),
+    summary       TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,   -- citations back to filings + transcript metrics
+    model         TEXT NOT NULL,
+    created_at    TEXT NOT NULL,
+    UNIQUE (ticker, transcript_id)
+);
+
+CREATE TABLE IF NOT EXISTS debates (
+    thesis_id       INTEGER PRIMARY KEY REFERENCES theses(id),
+    conviction      INTEGER NOT NULL CHECK (conviction BETWEEN 0 AND 100),
+    judge_reasoning TEXT NOT NULL,
+    transcript_path TEXT NOT NULL,  -- full Bull/Bear/Judge transcript on disk
+    model           TEXT NOT NULL,
+    debated_at      TEXT NOT NULL
+);
 """
 
 

@@ -1,7 +1,7 @@
 # AI Research Desk — all commands run through uv (never bare pip/python).
 UV ?= uv
 
-.PHONY: setup ingest extract diff score analyze debate backtest app test test-all lint fix-pth
+.PHONY: setup ingest extract diff score analyze transcripts thesis debate backtest app test test-all lint fix-pth
 
 # macOS quirk: uv can reflink the editable-install .pth with the UF_HIDDEN
 # flag set, and CPython >=3.12 silently skips hidden .pth files, breaking
@@ -27,14 +27,20 @@ score:            ## LLM-score NEW/ESCALATED risks (cached; needs ANTHROPIC_API_
 
 analyze: extract diff score  ## full Phase-1 analysis on cached filings
 
-debate:           ## Phase 3 — Bull/Bear/Judge debate
-	@echo "debate: not implemented yet (Phase 3)"
+transcripts:      ## Phase 2 — fetch earnings-call transcripts + tone metrics
+	$(UV) run python -m research_desk.cli transcripts
+
+thesis:           ## Phase 2 — LLM thesis per ticker/quarter (needs ANTHROPIC_API_KEY)
+	$(UV) run python -m research_desk.cli thesis
+
+debate:           ## Phase 3 — Bull/Bear/Judge debate (needs ANTHROPIC_API_KEY)
+	$(UV) run python -m research_desk.cli debate
 
 backtest:         ## Phase 3 — vectorbt long/short vs SPY
-	@echo "backtest: not implemented yet (Phase 3)"
+	$(UV) run python -m research_desk.cli backtest
 
 app:              ## Phase 3 — Streamlit dashboard
-	@echo "app: not implemented yet (Phase 3)"
+	$(UV) run streamlit run src/research_desk/app.py
 
 test: fix-pth     ## fast tests (network/model tests excluded)
 	$(UV) run pytest

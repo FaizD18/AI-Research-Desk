@@ -13,33 +13,33 @@ setup:            ## create venv + install all deps (incl. dev)
 	$(UV) sync
 	@$(MAKE) --no-print-directory fix-pth
 
-ingest:           ## fetch last 5y of 10-Ks for configured tickers into data/
+ingest: fix-pth   ## fetch last 5y of 10-Ks for configured tickers into data/
 	$(UV) run python -m research_desk.cli ingest
 
-extract:          ## parse Item 1A from cached filings
+extract: fix-pth  ## parse Item 1A from cached filings
 	$(UV) run python -m research_desk.cli extract
 
-diff:             ## embed + match risk paragraphs across years
+diff: fix-pth     ## embed + match risk paragraphs across years
 	$(UV) run python -m research_desk.cli diff
 
-score:            ## LLM-score NEW/ESCALATED risks (cached; needs ANTHROPIC_API_KEY)
+score: fix-pth    ## LLM-score NEW/ESCALATED risks (cached; needs ANTHROPIC_API_KEY)
 	$(UV) run python -m research_desk.cli score
 
 analyze: extract diff score  ## full Phase-1 analysis on cached filings
 
-transcripts:      ## Phase 2 — fetch earnings-call transcripts + tone metrics
+transcripts: fix-pth ## Phase 2 — fetch earnings-call transcripts + tone metrics
 	$(UV) run python -m research_desk.cli transcripts
 
-thesis:           ## Phase 2 — LLM thesis per ticker/quarter (needs ANTHROPIC_API_KEY)
+thesis: fix-pth   ## Phase 2 — LLM thesis per ticker/quarter (needs ANTHROPIC_API_KEY)
 	$(UV) run python -m research_desk.cli thesis
 
-debate:           ## Phase 3 — Bull/Bear/Judge debate (needs ANTHROPIC_API_KEY)
+debate: fix-pth   ## Phase 3 — Bull/Bear/Judge debate (needs ANTHROPIC_API_KEY)
 	$(UV) run python -m research_desk.cli debate
 
-backtest:         ## Phase 3 — vectorbt long/short vs SPY
+backtest: fix-pth ## Phase 3 — vectorbt long/short vs SPY
 	$(UV) run python -m research_desk.cli backtest
 
-app:              ## Phase 3 — Streamlit dashboard
+app: fix-pth      ## Phase 3 — Streamlit dashboard
 	$(UV) run streamlit run src/research_desk/app.py
 
 test: fix-pth     ## fast tests (network/model tests excluded)

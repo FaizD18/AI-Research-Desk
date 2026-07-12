@@ -89,6 +89,12 @@ LLM_MAX_TOKENS = 1_000
 LLM_BATCH_THRESHOLD = 8
 LLM_BATCH_POLL_SECONDS = 15.0
 
+# --- Thesis generation (Phase 2) ----------------------------------------
+
+THESIS_TOP_RISKS = 5  # most-severe NEW/ESCALATED paragraphs quoted in the prompt
+THESIS_EXCERPT_CHARS = 300  # per-paragraph excerpt length in the prompt
+THESIS_MAX_TOKENS = 1_500  # thesis objects are longer than single risk scores
+
 RISK_CATEGORIES: list[str] = [
     "regulatory",
     "competitive",

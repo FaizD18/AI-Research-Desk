@@ -138,6 +138,91 @@ def test_run_transcripts_skips_stub_and_malformed_files(_tmp_dirs, monkeypatch) 
     assert _run_offline(monkeypatch, ["JPM"]) == {"JPM": 1}
 
 
+def test_run_transcripts_skips_malformed_call_date(_tmp_dirs, monkeypatch) -> None:
+    _write_payload("JPM", 2026, 1, _long_paragraphs(), call_date="not-a-date")
+    _write_payload("JPM", 2026, 2, _long_paragraphs(), call_date="2026-04-14")
+    assert _run_offline(monkeypatch, ["JPM"]) == {"JPM": 1}
+
+
+# --- fetch_transcripts -------------------------------------------------------
+
+
+def _install_defeatbeta_stub(monkeypatch, listing_rows, transcripts, fail=()):
+    """Fake the defeatbeta_api package so no import side effects or network."""
+    import sys
+    import types
+
+    import pandas as pd
+
+    class _Transcripts:
+        def get_transcripts_list(self):
+            return pd.DataFrame(
+                listing_rows,
+                columns=["symbol", "fiscal_year", "fiscal_quarter", "report_date"],
+            )
+
+        def get_transcript(self, fy, fq):
+            if (fy, fq) in fail:
+                raise RuntimeError("quarter unavailable")
+            return pd.DataFrame(
+                transcripts[(fy, fq)], columns=["paragraph_number", "speaker", "content"]
+            )
+
+    class _Ticker:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = symbol
+
+        def earning_call_transcripts(self):
+            return _Transcripts()
+
+    for name in ("defeatbeta_api", "defeatbeta_api.data", "defeatbeta_api.data.ticker"):
+        module = types.ModuleType(name)
+        if name.endswith(".ticker"):
+            module.Ticker = _Ticker
+        monkeypatch.setitem(sys.modules, name, module)
+
+
+def test_fetch_transcripts_caches_new_and_filters_old_quarters(_tmp_dirs, monkeypatch) -> None:
+    _install_defeatbeta_stub(
+        monkeypatch,
+        listing_rows=[
+            ("AAPL", 2015, 1, "2015-01-27"),  # beyond the n_years cutoff
+            ("AAPL", 2026, 1, "2026-01-29"),
+        ],
+        transcripts={(2026, 1): [(1, "Jane CEO", "We expect growth.")]},
+    )
+    paths = transcripts.fetch_transcripts("AAPL")
+    assert [p.name for p in paths] == ["fy2026q1.json"]
+    payload = json.loads(paths[0].read_text())
+    assert payload["call_date"] == "2026-01-29"
+    assert payload["paragraphs"] == [{"speaker": "Jane CEO", "content": "We expect growth."}]
+
+
+def test_fetch_transcripts_does_not_refetch_cached_quarters(_tmp_dirs, monkeypatch) -> None:
+    cached = _write_payload("AAPL", 2026, 1, _long_paragraphs())
+    _install_defeatbeta_stub(
+        monkeypatch,
+        listing_rows=[("AAPL", 2026, 1, "2026-01-29")],
+        transcripts={},
+        fail={(2026, 1)},  # any fetch attempt for it would raise
+    )
+    assert transcripts.fetch_transcripts("AAPL") == [cached]
+
+
+def test_fetch_transcripts_skips_one_bad_quarter(_tmp_dirs, monkeypatch) -> None:
+    _install_defeatbeta_stub(
+        monkeypatch,
+        listing_rows=[
+            ("AAPL", 2026, 1, "2026-01-29"),
+            ("AAPL", 2026, 2, "2026-04-30"),
+        ],
+        transcripts={(2026, 2): [(1, "Jane CEO", "Steady quarter.")]},
+        fail={(2026, 1)},
+    )
+    paths = transcripts.fetch_transcripts("AAPL")
+    assert [p.name for p in paths] == ["fy2026q2.json"]  # bad quarter logged + skipped
+
+
 def test_run_transcripts_upsert_keeps_row_id_stable(_tmp_dirs, monkeypatch) -> None:
     _write_payload("AAPL", 2026, 1, _long_paragraphs())
 

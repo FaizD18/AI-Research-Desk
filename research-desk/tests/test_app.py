@@ -57,3 +57,8 @@ def test_app_renders_with_seeded_data(_tmp_db) -> None:
     at = AppTest.from_file(_APP)
     at.run(timeout=30)
     assert not at.exception
+    # Seeded tabs rendered data, not their empty-state hints; unseeded LLM
+    # stages still hint. This also proves the DB_PATH monkeypatch applied.
+    hints = " ".join(block.value for block in at.info)
+    assert "make ingest" not in hints and "make transcripts" not in hints
+    assert "make thesis" in hints and "make score" in hints

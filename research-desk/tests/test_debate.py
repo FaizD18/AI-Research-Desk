@@ -40,12 +40,21 @@ def _seed_thesis(conn, ticker: str = "AAPL", as_of: str = "2026-01-29") -> int:
 
 
 def _staged_batches(monkeypatch, stages: list[list]):
-    """Feed cached_batch one prepared result list per call; capture prompts."""
+    """Feed cached_batch one prepared result list per call; capture prompts.
+
+    Asserts each stage requests the response model its fakes are shaped as —
+    a stage wired to the wrong model must fail here, not only in production.
+    """
     calls: list[tuple[str, list[str]]] = []
 
     def fake(system, users, model_cls, **kwargs):
         calls.append((system, list(users)))
-        return stages.pop(0)
+        results = stages.pop(0)
+        for r in results:
+            assert r is None or isinstance(r, model_cls), (
+                f"stage returned {type(r).__name__}, caller asked for {model_cls.__name__}"
+            )
+        return results
 
     monkeypatch.setattr(llm, "cached_batch", fake)
     return calls
@@ -82,17 +91,32 @@ def test_run_debate_stores_verdict_and_transcript(conn, monkeypatch) -> None:
 
 def test_run_debate_is_idempotent(conn, monkeypatch) -> None:
     _seed_thesis(conn)
+    # Exactly three stage lists: the second run must short-circuit before any
+    # LLM stage (pop on an empty list would fail this test loudly).
     _staged_batches(
         monkeypatch,
         [
             [Argument(argument="b")],
             [Argument(argument="r")],
             [Verdict(conviction=50, reasoning="even")],
-            [], [], [],  # second run: three stages over zero pending theses
         ],
     )
     assert debate.run_debate(["AAPL"]) == {"AAPL": 1}
     assert debate.run_debate(["AAPL"]) == {"AAPL": 0}
+
+
+def test_run_debate_drops_thesis_when_judge_fails(conn, monkeypatch) -> None:
+    """Bull and Bear succeed but the Judge fails: still no partial debate."""
+    _seed_thesis(conn)
+    _staged_batches(
+        monkeypatch,
+        [[Argument(argument="b")], [Argument(argument="r")], [None]],
+    )
+    assert debate.run_debate(["AAPL"]) == {"AAPL": 0}
+    check = db.connect(config.DB_PATH)
+    assert check.execute("SELECT COUNT(*) FROM debates").fetchone()[0] == 0
+    check.close()
+    assert not (config.DEBATES_DIR / "AAPL_2026-01-29.md").exists()
 
 
 def test_run_debate_drops_thesis_when_a_stage_fails(conn, monkeypatch) -> None:
@@ -108,7 +132,9 @@ def test_run_debate_drops_thesis_when_a_stage_fails(conn, monkeypatch) -> None:
 
 
 def test_verdict_rejects_out_of_range_conviction() -> None:
-    with pytest.raises(Exception):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         Verdict(conviction=101, reasoning="too sure")
 
 

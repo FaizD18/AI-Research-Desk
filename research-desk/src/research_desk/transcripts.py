@@ -32,6 +32,10 @@ _OPERATOR_SPEAKER = "operator"
 
 _WORD_RE = re.compile(r"[a-z']+")
 
+# call_date flows straight into point-in-time joins downstream (thesis,
+# backtest); a malformed date would corrupt string-comparison ordering.
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 
 def _count_words(text: str) -> int:
     """Number of word tokens in ``text`` (lowercased alphabetic runs)."""
@@ -154,6 +158,12 @@ def run_transcripts(tickers: list[str]) -> dict[str, int]:
                 metrics = tone_metrics(_call_text(payload))
             except Exception:
                 log.exception("%s: unreadable transcript cache %s; skipping", ticker, path.name)
+                continue
+            if not _DATE_RE.match(str(payload.get("call_date", ""))):
+                log.warning(
+                    "%s: bad call_date %r in %s; skipping (dates drive point-in-time joins)",
+                    ticker, payload.get("call_date"), path.name,
+                )
                 continue
             if metrics["word_count"] < config.TRANSCRIPT_MIN_WORDS:
                 log.warning(

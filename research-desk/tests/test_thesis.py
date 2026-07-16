@@ -87,6 +87,30 @@ def test_build_prompt_contains_counts_excerpts_and_qoq_delta(conn) -> None:
     assert "As of: 2026-04-30" in prompt
 
 
+def test_build_prompt_formats_scored_risks_severity_first(conn) -> None:
+    _full_seed(conn)
+    ids = {
+        r["change_type"]: r["id"]
+        for r in conn.execute("SELECT id, change_type FROM risk_changes").fetchall()
+    }
+    conn.executemany(
+        """INSERT INTO risk_scores (change_id, category, severity, rationale, model,
+           scored_at) VALUES (?, ?, ?, ?, 'm', 't')""",
+        [
+            (ids["NEW"], "supply-chain", 3, "single-source dependency"),
+            (ids["ESCALATED"], "regulatory", 5, "existential antitrust exposure"),
+        ],
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM transcripts WHERE fiscal_quarter = 2").fetchone()
+    prompt = thesis.build_prompt(conn, row)
+    assert "[ESCALATED | regulatory, severity 5/5 — existential antitrust exposure]" in prompt
+    assert "[NEW | supply-chain, severity 3/5" in prompt
+    assert "unscored" not in prompt
+    # Highest severity is quoted first, regardless of change type.
+    assert prompt.index("severity 5/5") < prompt.index("severity 3/5")
+
+
 def test_build_prompt_first_quarter_has_no_prior(conn) -> None:
     _full_seed(conn)
     row = conn.execute(
@@ -169,5 +193,7 @@ def test_run_thesis_degrades_gracefully_without_key(conn, monkeypatch) -> None:
 
 
 def test_run_thesis_rejects_invalid_direction() -> None:
-    with pytest.raises(Exception):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
         Thesis(direction="hold", confidence=0.5, summary="s", evidence=[])

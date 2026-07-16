@@ -109,6 +109,9 @@ CONVICTION_LONG = 60  # long-thesis conviction >= this -> long position
 CONVICTION_SHORT = 60  # short-thesis conviction >= this -> short position
 REBALANCE_FREQ = "MS"  # rebalance on the first trading day of each month
 BACKTEST_FEES = 0.0005  # 5 bps per side: approximate all-in trading cost
+# Business-day price series must annualize over trading days, not calendar
+# days — vectorbt's default of 365 would inflate Sharpe by ~1.2x.
+ANNUALIZATION = "252 days"
 BACKTEST_REPORT_PATH = DATA_DIR / "backtest_report.md"
 
 RISK_CATEGORIES: list[str] = [

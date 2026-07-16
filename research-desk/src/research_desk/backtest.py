@@ -149,7 +149,12 @@ def _write_report(
         f"| Sharpe (annualized) | {strategy['sharpe']:.2f} | {benchmark['sharpe']:.2f} |",
         f"| max drawdown | {pct(strategy['max_drawdown'])} | "
         f"{pct(benchmark['max_drawdown'])} |",
-        f"| avg monthly turnover (one-way) | {pct(turnover)} | 0.0% |",
+        f"| avg monthly turnover (one-way, target-weight, excl. initial build) | "
+        f"{pct(turnover)} | 0.0% |",
+        "",
+        "Sharpe is annualized over 252 trading days. Turnover compares consecutive "
+        "target weights (not fills) and excludes the initial position build, which "
+        "does trade and does pay fees.",
         "",
         "## Where this signal fails (read before quoting the table)",
         "",
@@ -167,6 +172,9 @@ def _write_report(
         "the window.",
         "- **Cost model is approximate.** Flat per-side fees; no borrow cost on shorts, "
         "no market impact, fills at the close.",
+        "- **Signal dates trust the transcript dataset.** Each signal is dated by the "
+        "call date recorded in the defeatbeta dataset; any lag between the live call "
+        "and the transcript's publication is not modeled.",
     ]
     config.BACKTEST_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     config.BACKTEST_REPORT_PATH.write_text("\n".join(lines) + "\n")
@@ -201,6 +209,10 @@ def run_backtest(tickers: list[str]) -> dict[str, float] | None:
     end = datetime.now(UTC).date().isoformat()
     prices = load_prices(universe + [config.BENCHMARK], start, end)
     strat_prices = prices[universe]
+    # Report the window actually simulated: the price index can start/stop a
+    # few days inside [start, end] (weekends, cache tolerance, exclusive ends).
+    actual_start = str(prices.index[0].date())
+    actual_end = str(prices.index[-1].date())
 
     month_starts = pd.date_range(start, end, freq=config.REBALANCE_FREQ)
     # First trading day on/after each month start, deduplicated.
@@ -217,12 +229,17 @@ def run_backtest(tickers: list[str]) -> dict[str, float] | None:
 
     size = pd.DataFrame(float("nan"), index=strat_prices.index, columns=universe)
     size.loc[weights.index] = weights
+    # call_seq="auto" executes sells before buys within a rebalance; with the
+    # default column order a fully-invested flip leaves buys unfunded and
+    # silently unfilled. Annualize over trading days (see config.ANNUALIZATION).
+    vbt.settings.returns["year_freq"] = config.ANNUALIZATION
     portfolio = vbt.Portfolio.from_orders(
         strat_prices,
         size=size,
         size_type="targetpercent",
         cash_sharing=True,
         group_by=True,
+        call_seq="auto",
         fees=config.BACKTEST_FEES,
         freq="D",
     )
@@ -243,13 +260,13 @@ def run_backtest(tickers: list[str]) -> dict[str, float] | None:
         per_ticker[s[0]] = per_ticker.get(s[0], 0) + 1
     turnover = avg_turnover(weights)
     _write_report(
-        universe=universe, start=start, end=end, n_signals=len(signals),
+        universe=universe, start=actual_start, end=actual_end, n_signals=len(signals),
         per_ticker=per_ticker, strategy=strategy, benchmark=benchmark,
         turnover=turnover,
     )
     log.info(
         "backtest %s..%s: strategy %.1f%% (Sharpe %.2f) vs %s %.1f%% — report at %s",
-        start, end, 100 * strategy["total_return"], strategy["sharpe"],
+        actual_start, actual_end, 100 * strategy["total_return"], strategy["sharpe"],
         config.BENCHMARK, 100 * benchmark["total_return"], config.BACKTEST_REPORT_PATH,
     )
     return strategy

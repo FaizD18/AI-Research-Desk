@@ -61,7 +61,13 @@ _SYSTEM = (
 def _latest_filing_before(
     conn: sqlite3.Connection, ticker: str, call_date: str
 ) -> sqlite3.Row | None:
-    """Most recent 10-K filed on or before ``call_date`` that has risk changes."""
+    """Most recent 10-K filed on or before ``call_date`` that has risk changes.
+
+    ``<=`` is deliberate: a 10-K filed the same day as the call is public the
+    same day, and the thesis is only ever *traded* at the next monthly
+    rebalance, strictly after ``as_of`` — so same-day evidence introduces no
+    tradable lookahead.
+    """
     return conn.execute(
         """SELECT f.accession, f.filing_date, f.report_date
            FROM filings f

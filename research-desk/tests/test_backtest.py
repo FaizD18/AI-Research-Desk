@@ -103,6 +103,65 @@ def test_avg_turnover_zero_for_constant_targets() -> None:
     assert backtest.avg_turnover(w) == 0.0
 
 
+def test_avg_turnover_scales_one_way() -> None:
+    # Full flip: |Δ| sums to 2.0 across both legs -> one-way turnover 1.0.
+    w = pd.DataFrame(
+        {"AAPL": [0.5, -0.5], "NVDA": [-0.5, 0.5]},
+        index=pd.DatetimeIndex(["2026-01-01", "2026-02-01"]),
+    )
+    assert backtest.avg_turnover(w) == pytest.approx(1.0)
+
+
+# --- load_prices -------------------------------------------------------------
+
+
+def _install_yf_stub(monkeypatch, download):
+    import sys
+    import types
+
+    mod = types.ModuleType("yfinance")
+    mod.download = download
+    monkeypatch.setitem(sys.modules, "yfinance", mod)
+
+
+def test_load_prices_fetches_writes_cache_then_reads_offline(_tmp_env, monkeypatch) -> None:
+    idx = pd.date_range("2026-01-02", "2026-03-31", freq="B", tz="UTC")
+
+    def fake_download(symbol, start, end, **kwargs):
+        # yfinance's modern shape: MultiIndex (field, symbol), tz-aware index.
+        return pd.DataFrame(
+            {("Close", symbol): np.linspace(100, 110, len(idx))}, index=idx
+        )
+
+    _install_yf_stub(monkeypatch, fake_download)
+    first = backtest.load_prices(["AAPL"], "2026-01-02", "2026-03-31")
+    assert list(first.columns) == ["AAPL"]
+    assert (config.PRICES_CACHE_DIR / "AAPL.csv").exists()
+    assert first.index.tz is None  # normalized for comparisons downstream
+
+    def poisoned_download(*args, **kwargs):
+        raise AssertionError("cache miss: network hit on a covered window")
+
+    _install_yf_stub(monkeypatch, poisoned_download)
+    second = backtest.load_prices(["AAPL"], "2026-01-02", "2026-03-31")
+    assert second["AAPL"].iloc[-1] == pytest.approx(first["AAPL"].iloc[-1])
+
+
+def test_load_prices_refetches_when_cache_window_too_short(_tmp_env, monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_download(symbol, start, end, **kwargs):
+        calls.append(f"{start}..{end}")
+        idx = pd.date_range(start, end, freq="B")
+        return pd.DataFrame({"Close": np.linspace(100, 101, len(idx))}, index=idx)
+
+    _install_yf_stub(monkeypatch, fake_download)
+    backtest.load_prices(["AAPL"], "2026-01-02", "2026-02-27")
+    # Asking well past the cached end must refetch, not serve stale data.
+    backtest.load_prices(["AAPL"], "2026-01-02", "2026-06-30")
+    assert len(calls) == 2
+
+
 # --- run_backtest ------------------------------------------------------------
 
 

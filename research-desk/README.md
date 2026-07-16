@@ -5,8 +5,10 @@ investment theses, has agents debate those theses, and backtests the resulting
 signals. Built as a portfolio project — the priorities are code quality, a clean
 architecture, and **honest evaluation of what works and what doesn't**.
 
-The project ships in three phases. **Phase 1 (RiskDelta) is complete;** Phases 2
-and 3 are scoped below.
+**All three phases are built and tested.** Every deterministic stage has run on
+real data; the three LLM-gated stages (risk scoring, theses, debates) are
+implemented, cached, and awaiting their first funded run — see *Running the LLM
+stages* at the bottom.
 
 ---
 
@@ -64,6 +66,11 @@ Requires [uv](https://docs.astral.sh/uv/). The LLM scoring stage needs
 make setup                 # uv sync — create .venv, install deps
 make ingest                # fetch AAPL/NVDA/JPM 10-Ks (last 5y) into data/
 make analyze               # extract Item 1A → YoY diff → LLM scoring
+make transcripts           # fetch 5y of earnings-call transcripts + tone metrics
+make thesis                # LLM thesis per ticker/quarter (needs ANTHROPIC_API_KEY)
+make debate                # Bull/Bear/Judge conviction per thesis (needs key)
+make backtest              # monthly long/short vs SPY from conviction scores
+make app                   # Streamlit dashboard
 make test                  # fast tests (network + model download excluded)
 make test-all              # everything, incl. the real-filing / embedding tests
 ```
@@ -111,6 +118,56 @@ for what that self-similarity does to the classifier.)
 
 ---
 
+## Phase 2 — Sentiment + thesis
+
+```
+┌───────────────┐   last 5y of earnings calls, from the openly published
+│transcripts.py │   defeatbeta dataset on Hugging Face (no scraping, no key);
+└───────────────┘   cached JSON → deterministic tone metrics per quarter:
+   │                hedging / uncertainty / guidance terms per 1k words
+   │  transcripts table
+   ▼
+┌───────────────┐   risk changes from the latest 10-K filed ON OR BEFORE the
+│   thesis.py   │   call date + QoQ tone deltas → one structured LLM call →
+└───────────────┘   direction (long/short/neutral), confidence, cited evidence
+   │  theses table
+```
+
+Tone metrics are word-list counts (Loughran-McDonald-inspired, lists in
+`config.py`) over non-operator speech — counting words is not a judgment task,
+so no LLM is involved. Levels vary by speaker style; the thesis prompt uses
+quarter-over-quarter *shifts*.
+
+Real example from the ingested data (60 call-quarters): JPMorgan's
+2025-04-11 call — the first after the April 2025 tariff shock — shows the
+largest tone shift in the dataset, **+3.68 uncertainty terms per 1k words**
+quarter-over-quarter.
+
+## Phase 3 — Debate + backtest + dashboard
+
+```
+┌───────────────┐   Bull argues each thesis, Bear attacks it using the same
+│   debate.py   │   evidence, Judge scores conviction 0-100; full transcripts
+└───────────────┘   logged to data/debates/ (stage-wise batched LLM calls)
+   │  debates table
+   ▼
+┌───────────────┐   conviction → monthly-rebalanced 1/N long/short, applied
+│  backtest.py  │   only AFTER each signal's call date; vectorbt vs SPY with
+└───────────────┘   fees → data/backtest_report.md incl. failure writeup
+   │
+   ▼
+┌───────────────┐   Streamlit: risk timeline, call tone, thesis history,
+│    app.py     │   debate transcripts, backtest report — works at any
+└───────────────┘   pipeline stage, including before any LLM spend
+```
+
+A thesis trades only when the Judge found it convincing (conviction ≥ 60): a
+convincing long thesis gets a long weight, a convincing short thesis a short
+weight, everything else stays flat. Weights are 1/N of the universe so gross
+exposure never exceeds 100%.
+
+---
+
 ## Design principles
 
 - **Deterministic first.** LLMs are used only for genuine judgment calls
@@ -136,18 +193,24 @@ for what that self-similarity does to the classifier.)
 Python 3.11+ (managed with `uv`), SQLite, `lxml`, `requests`,
 `sentence-transformers` (BAAI/bge-small-en-v1.5), the Anthropic API
 (`claude-sonnet-5`, structured outputs + Message Batches), `pydantic`,
-`vectorbt` and `streamlit` (Phase 3), and `pytest`. Type hints and docstrings on
-public functions; a `Makefile` wraps every stage.
+`defeatbeta-api` (earnings transcripts), `yfinance` (prices), `vectorbt`
+(backtest), `streamlit` (dashboard), and `pytest`. Type hints and docstrings
+on public functions; a `Makefile` wraps every stage.
 
 ## Testing
 
-`make test` runs the fast suite (47 tests) with all network and model access
+`make test` runs the fast suite (95 tests) with all network and model access
 faked, so it needs no key, no data, and no downloads. Extraction is tested
 against synthetic fixtures that reproduce each filer's *real* HTML structure
 (Apple's four-`&nbsp;` bold heading, NVIDIA's green heading with cross-references
 that precede the real one, JPMorgan's non-bold heading with a trailing period
-and interleaved page artifacts). `make test-all` adds `slow` tests that run the
-parser over all 15 real cached filings and embed real risk paragraphs.
+and interleaved page artifacts). Phase 2/3 tests fake the LLM client, the
+transcript source, and market data: tone metrics run over fixture payloads
+shaped exactly like the real cache files, the backtest runs on synthetic
+prices rigged so correct point-in-time behavior is distinguishable from
+lookahead, and the dashboard is smoke-tested with Streamlit's `AppTest` on
+both empty and seeded databases. `make test-all` adds `slow` tests that run
+the parser over all 15 real cached filings and embed real risk paragraphs.
 
 ## Limitations
 
@@ -180,18 +243,43 @@ Honest about what this does and doesn't do:
 - **Single small embedding model.** bge-small-en-v1.5 is fast and CPU-friendly
   but has a 512-token window; unusually long risk paragraphs are truncated
   before embedding.
+- **Tone metrics count words, not meaning.** "Risk" scores the same in
+  "de-risked the portfolio"; negation, irony, and context are invisible.
+  Using QoQ shifts rather than levels mitigates speaker-style bias but not
+  the underlying naivety — that's the price of keeping sentiment deterministic.
+- **The LLM knows the future.** Theses and debates come from a model whose
+  training data overlaps the backtest window. Prompts restrict it to the
+  provided point-in-time evidence, but knowledge leakage through the model
+  cannot be ruled out — treat any backtest outperformance as suspect. This
+  is documented in every generated backtest report.
+- **Three tickers is an architecture demo, not a strategy.** Nothing the
+  backtest reports is statistically significant, and the tickers were chosen
+  today (survivorship). Conviction thresholds and 1/N sizing are deliberate
+  defaults, fixed before any results were computed and never tuned.
+- **Debate agents argue over a closed record.** Bull, Bear, and Judge see only
+  the thesis's cited evidence — by design, so conviction measures how well the
+  thesis survives scrutiny of its own evidence, not who can fetch better facts.
+- **Transcript provenance.** The defeatbeta dataset is a community-maintained
+  mirror; call dates are taken from its `report_date` field, and transcripts
+  may be edited or partial. A commercial pipeline would license IR transcripts
+  directly.
 
 ---
 
-## Roadmap
+## Running the LLM stages (first funded run)
 
-- **Phase 2 — Sentiment + thesis.** Ingest earnings-call transcripts (proposed
-  source: the openly published `defeatbeta` / HuggingFace dataset — no scraping,
-  clean licensing), extract quarter-over-quarter management tone shifts, and
-  combine risk-change and sentiment signals into a structured, citation-backed
-  thesis per ticker per quarter.
-- **Phase 3 — Debate + backtest + dashboard.** A Bull/Bear/Judge agent debate
-  producing a 0–100 conviction score with logged transcripts; a monthly-rebalanced
-  long/short backtest over the S&P 100 vs SPY (`vectorbt`) with an honest writeup
-  of where the signal fails; and a Streamlit dashboard tying risk timelines,
-  theses, debates, and backtest results together.
+Everything above the LLM boundary has already run on real data: 15 filings
+parsed and diffed, 60 call-quarters ingested and scored for tone. The three
+LLM stages need `ANTHROPIC_API_KEY` (see `.env.example`) and run in order:
+
+```bash
+make score      # ~440 risk paragraphs
+make thesis     # ~40 call-quarters with a preceding 10-K
+make debate     # 3 batched calls per thesis (Bull, Bear, Judge)
+make backtest   # now has conviction signals to trade
+```
+
+All calls go through the Message Batches API (50% discount) and a disk cache,
+so the whole first run costs roughly **$1–3 one-time** at current pricing, and
+every rerun is $0. Without a key each stage logs what it skipped and leaves
+the work queued for the next run — nothing crashes.

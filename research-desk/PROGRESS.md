@@ -6,17 +6,18 @@
 
 ## Current state
 
-- **In progress:** Phase 1 wrap-up. All five modules committed and green
-  (47 fast tests, lint clean). Real-data run done for ingest → extract → diff:
-  15 filings, 1,767 risk changes (440 NEW/ESCALATED). Full README written and
-  fact-checked against code and DB by a 7-agent verification pass (53 claims;
-  3 corrected: JPM example was FY2023 not FY2025, "zero network calls" holds
-  only for `make analyze`, config-centralization overclaim softened).
-- **Next step:** set ANTHROPIC_API_KEY and run `make score` to finish the
-  end-to-end run (440 paragraphs, batched + disk-cached), then user review of
-  Phase 1 before Phase 2 (transcript source also needs user approval).
-- **Blockers / open questions:** ANTHROPIC_API_KEY not set in this
-  environment — scoring stage unrun, risk_scores table empty.
+- **In progress:** all three phases built and committed (95 fast tests, lint
+  clean). Real-data runs done for every key-free stage: 15 filings → 1,767
+  risk changes (440 NEW/ESCALATED); 60 call-quarters ingested from the
+  user-approved defeatbeta source with tone metrics stored. Key-less
+  degradation verified live: `make thesis` queues 40 quarters and skips
+  cleanly, `make backtest` warns (no convictions) and exits.
+- **Next step:** user adds ANTHROPIC_API_KEY + API credits (~$1–3 one-time),
+  then `make score && make thesis && make debate && make backtest`. Then user
+  review of the whole project; capture dashboard screenshots for the README
+  after the funded run populates it.
+- **Blockers / open questions:** ANTHROPIC_API_KEY not set — risk_scores,
+  theses, and debates tables empty until the first funded run.
 
 ## Phase 1 — RiskDelta pipeline
 
@@ -37,20 +38,22 @@
 
 ## Phase 2 — Sentiment + thesis
 
-- [ ] Transcript source approved
-- [ ] transcripts.py + tests
-- [ ] thesis.py + tests
-- [ ] Phase 2 end-to-end, committed, user reviewed
+- [x] Transcript source approved (defeatbeta HF dataset, user-approved 2026-07-12)
+- [x] transcripts.py + tests (7 tests; real run: 60 call-quarters, 3 tickers × 20)
+- [x] thesis.py + tests (8 tests; point-in-time filing selection verified)
+- [~] Phase 2 end-to-end, committed, user reviewed
+      (transcripts ran on real data; thesis gated on ANTHROPIC_API_KEY)
 
 ## Phase 3 — Debate + backtest + dashboard
 
-- [ ] debate.py (Bull / Bear / Judge) + logged transcripts
-- [ ] backtest.py — vectorbt long/short vs SPY, honest failure writeup
-- [ ] app.py — Streamlit dashboard
-- [ ] README with architecture diagram + limitations section
-- [ ] Deployed / demo assets captured
+- [x] debate.py (Bull / Bear / Judge) + logged transcripts (5 tests; stage-batched)
+- [x] backtest.py — vectorbt long/short vs SPY, honest failure writeup (8 tests)
+- [x] app.py — Streamlit dashboard (AppTest smoke tests, empty + seeded DB)
+- [x] README with architecture diagram + limitations section (all 3 phases)
+- [ ] Deployed / demo assets captured (screenshots after first funded run)
 
 ## Session log
 
 <!-- One line per session: date — what was done — where it stopped -->
 2026-07-12 — README fact-checked (53 claims, 3 fixed) + PROGRESS refreshed, wrap-up committed & pushed — Phase 1 blocked only on ANTHROPIC_API_KEY scoring run + user review
+2026-07-12/15 — Phases 2+3 built per user request (pay later): transcripts (defeatbeta, user-approved) + thesis + debate + backtest + app; real transcript data ingested (60 quarters); review findings fixed (Sharpe 252d annualization, vectorbt call_seq=auto — probe-confirmed unfilled buys when fully invested, honest report window/turnover labels, call_date validation) + 18 coverage-gap tests → 95 tests; pushed — awaiting user's funded LLM run + review
